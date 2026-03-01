@@ -6,6 +6,21 @@ exports.resp = (res, code, message, data = {}) => {
   })
 };
 
+exports.apiKeyMiddleware = (req, res, next) => {
+  const apiKey = req.body?.apiKey ?? req.query?.apiKey;
+
+  if (!apiKey) {
+    return exports.resp(res, 400, 'Missing apiKey');
+  }
+
+  if (apiKey !== process.env.API_KEY) {
+    return exports.resp(res, 401, 'Invalid apiKey');
+  }
+
+  next();
+}
+
+
 exports.gracefulShutdown = async () => {
   console.log(`[INFO] Shutting down gracefully...`);
 

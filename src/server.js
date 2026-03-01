@@ -1,8 +1,8 @@
 const express = require('express');
 const qrcode = require('qrcode-terminal');
 
-const { resp, gracefulShutdown } = require('./func');
 const { Client, LocalAuth } = require('whatsapp-web.js');
+const { resp, apiKeyMiddleware, gracefulShutdown } = require('./func');
 
 // -------------------------------------------------------------------------- //
 
@@ -30,15 +30,15 @@ client.initialize();
 const app = express();
 app.use(express.json());
 
-app.post('/send', async (req, res) => {
-  const { number, message } = req.body || {};
+app.post('/send', apiKeyMiddleware, async (req, res) => {
+  const chatId = req.body?.chatId ?? req.query?.chatId;
+  const message = req.body?.message ?? req.query?.message;
 
-  if (!number || !message) {
-    return resp(res, 400, 'Missing or empty fields (number, message)');
+  if (!chatId || !message) {
+    return resp(res, 400, 'Missing or empty fields (chatId, message)');
   }
 
   try {
-    const chatId = `${number}@c.us`;
     await client.sendMessage(chatId, message);
     return resp(res, 200, 'Sent message successfully');
   }
