@@ -1,2 +1,2 @@
 # NotifyBot
-Send WhatsApp Messages using WWeb.JS
+WhatsApp Gateway using WWeb.JS

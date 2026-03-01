@@ -1,7 +1,7 @@
 FROM node:24-bookworm-slim
+WORKDIR /usr/src/app
 
 VOLUME /data
-WORKDIR /usr/src/app
 
 RUN apt-get update && apt-get install -y \
   gconf-service libgbm-dev libasound2 libatk1.0-0 libc6 libcairo2 \
