@@ -19,6 +19,19 @@ client.on('ready', () => {
   console.log('[INFO] event: ready');
 });
 
+client.on('message', async (msg) => {
+  try {
+    const botId = client.info.wid._serialized;
+    if (msg.mentionedIds?.includes(botId)) {
+      const chat = await msg.getChat();
+      await msg.reply(`Chat ID: ${chat.id._serialized}`);
+    }
+  }
+  catch (err) {
+    console.error('[ERROR] Failed to handle mention:', err);
+  }
+});
+
 client.on('disconnected', () => {
   console.log('[INFO] event: disconnected');
 });
