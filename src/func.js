@@ -20,7 +20,6 @@ exports.apiKeyMiddleware = (req, res, next) => {
   next();
 }
 
-
 exports.gracefulShutdown = async () => {
   console.log(`[INFO] Shutting down gracefully...`);
 
