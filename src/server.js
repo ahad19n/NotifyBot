@@ -21,12 +21,16 @@ client.on('ready', () => {
 
 client.on('message', async (msg) => {
   try {
-    const botId = client.info.wid._serialized;
-    if (msg.mentionedIds?.includes(botId)) {
-      const chat = await msg.getChat();
-      if (chat.isGroup) {
-        await msg.reply(`Chat ID: ${chat.id._serialized}`);
-      }
+    if (!msg.mentionedIds?.length) return;
+
+    // Resolve mentions to contacts and check isMe — a plain comparison against
+    // client.info.wid fails in groups, where mentions use @lid IDs instead of @c.us
+    const mentions = await msg.getMentions();
+    if (!mentions.some((contact) => contact.isMe)) return;
+
+    const chat = await msg.getChat();
+    if (chat.isGroup) {
+      await msg.reply(`Chat ID: ${chat.id._serialized}`);
     }
   }
   catch (err) {
