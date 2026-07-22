@@ -1,7 +1,7 @@
 const express = require('express');
 const qrcode = require('qrcode-terminal');
 
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const { resp, apiKeyMiddleware, gracefulShutdown } = require('./func');
 
 // -------------------------------------------------------------------------- //
@@ -19,6 +19,21 @@ client.on('ready', () => {
   console.log('[INFO] event: ready');
 });
 
+client.on('message', async (msg) => {
+  try {
+    const botId = client.info.wid._serialized;
+    if (msg.mentionedIds?.includes(botId)) {
+      const chat = await msg.getChat();
+      if (chat.isGroup) {
+        await msg.reply(`Chat ID: ${chat.id._serialized}`);
+      }
+    }
+  }
+  catch (err) {
+    console.error('[ERROR] Failed to handle mention:', err);
+  }
+});
+
 client.on('disconnected', () => {
   console.log('[INFO] event: disconnected');
 });
@@ -28,17 +43,30 @@ client.initialize();
 // -------------------------------------------------------------------------- //
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
 
 app.post('/send', apiKeyMiddleware, async (req, res) => {
   const chatId = req.body?.chatId ?? req.query?.chatId;
   const message = req.body?.message ?? req.query?.message;
+  const imageUrl = req.body?.imageUrl ?? req.query?.imageUrl;
+  const imageBase64 = req.body?.imageBase64;
+  const mimeType = req.body?.mimeType ?? 'image/jpeg';
+  const filename = req.body?.filename ?? req.query?.filename ?? 'image';
 
-  if (!chatId || !message) {
-    return resp(res, 400, 'Missing or empty fields (chatId, message)');
+  if (!chatId || (!message && !imageUrl && !imageBase64)) {
+    return resp(res, 400, 'Missing or empty fields (chatId, and one of: message, imageUrl, imageBase64)');
   }
 
   try {
+    if (imageUrl || imageBase64) {
+      const media = imageUrl
+        ? await MessageMedia.fromUrl(imageUrl, { unsafeMime: true, filename })
+        : new MessageMedia(mimeType, imageBase64, filename);
+
+      await client.sendMessage(chatId, media, { caption: message });
+      return resp(res, 200, 'Sent image successfully');
+    }
+
     await client.sendMessage(chatId, message);
     return resp(res, 200, 'Sent message successfully');
   }
