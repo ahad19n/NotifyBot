@@ -1,77 +1,53 @@
 const express = require('express');
-const qrcode = require('qrcode-terminal');
 
-const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const { resp, apiKeyMiddleware, gracefulShutdown } = require('./func');
+const { createClient, normalizePhoneNumber } = require('./whatsapp');
 
 // -------------------------------------------------------------------------- //
 
-const client = new Client({
-  authStrategy: new LocalAuth({ dataPath: '/data' }),
-  puppeteer: { args: ['--no-sandbox', '--disable-setuid-sandbox'] }
-});
+const phoneNumber = normalizePhoneNumber(process.env.PHONE_NUMBER);
 
-client.on('qr', (qr) => {
-  qrcode.generate(qr, { small: true });
-});
+if (!phoneNumber) {
+  console.error("[ERROR] PHONE_NUMBER must be the bot's own number in international format, digits only (e.g. 923001234567)");
+  process.exit(1);
+}
 
-client.on('ready', () => {
-  console.log('[INFO] event: ready');
-});
+// Baileys addresses users as @s.whatsapp.net and groups as @g.us — the @c.us
+// form used by whatsapp-web.js is not accepted
+const JID_SUFFIXES = ['@s.whatsapp.net', '@g.us'];
 
-client.on('message', async (msg) => {
-  try {
-    if (!msg.mentionedIds?.length) return;
+let client = null;
 
-    // Resolve mentions to contacts and check isMe — a plain comparison against
-    // client.info.wid fails in groups, where mentions use @lid IDs instead of @c.us
-    const mentions = await msg.getMentions();
-    if (!mentions.some((contact) => contact.isMe)) return;
-
-    const chat = await msg.getChat();
-    if (chat.isGroup) {
-      await msg.reply(`Chat ID: ${chat.id._serialized}`);
-    }
-  }
-  catch (err) {
-    console.error('[ERROR] Failed to handle mention:', err);
-  }
-});
-
-client.on('disconnected', () => {
-  console.log('[INFO] event: disconnected');
-});
-
-client.initialize();
+createClient({ phoneNumber, pairingCode: process.env.PAIRING_CODE })
+  .then((created) => { client = created; })
+  .catch((err) => {
+    console.error('[ERROR] Failed to start WhatsApp client:', err);
+    process.exit(1);
+  });
 
 // -------------------------------------------------------------------------- //
 
 const app = express();
-app.use(express.json({ limit: '25mb' }));
+app.use(express.json());
 
 app.post('/send', apiKeyMiddleware, async (req, res) => {
   const chatId = req.body?.chatId ?? req.query?.chatId;
   const message = req.body?.message ?? req.query?.message;
-  const imageUrl = req.body?.imageUrl ?? req.query?.imageUrl;
-  const imageBase64 = req.body?.imageBase64;
-  const mimeType = req.body?.mimeType ?? 'image/jpeg';
-  const filename = req.body?.filename ?? req.query?.filename ?? 'image';
 
-  if (!chatId || (!message && !imageUrl && !imageBase64)) {
-    return resp(res, 400, 'Missing or empty fields (chatId, and one of: message, imageUrl, imageBase64)');
+  if (!chatId || !message) {
+    return resp(res, 400, 'Missing or empty fields (chatId, message)');
+  }
+
+  if (!JID_SUFFIXES.some((suffix) => String(chatId).endsWith(suffix))) {
+    return resp(res, 400, 'Invalid chatId (expected a WhatsApp JID ending in @s.whatsapp.net for a user or @g.us for a group)');
+  }
+
+  if (!client?.isReady()) {
+    return resp(res, 503, 'WhatsApp client not connected');
   }
 
   try {
-    if (imageUrl || imageBase64) {
-      const media = imageUrl
-        ? await MessageMedia.fromUrl(imageUrl, { unsafeMime: true, filename })
-        : new MessageMedia(mimeType, imageBase64, filename);
-
-      await client.sendMessage(chatId, media, { caption: message });
-      return resp(res, 200, 'Sent image successfully');
-    }
-
-    await client.sendMessage(chatId, message);
+    await client.sendText(String(chatId), message);
     return resp(res, 200, 'Sent message successfully');
   }
 
@@ -87,5 +63,5 @@ const server = app.listen(process.env.PORT || 3000, () => {
   console.log('[INFO] Server listening on port', process.env.PORT || 3000);
 });
 
-process.on('SIGINT', () => gracefulShutdown(server));
-process.on('SIGTERM', () => gracefulShutdown(server));
+process.on('SIGINT', () => gracefulShutdown(server, client));
+process.on('SIGTERM', () => gracefulShutdown(server, client));
