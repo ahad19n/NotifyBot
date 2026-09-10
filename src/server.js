@@ -16,6 +16,19 @@ if (!phoneNumber) {
 // form used by whatsapp-web.js is not accepted
 const JID_SUFFIXES = ['@s.whatsapp.net', '@g.us'];
 
+// Baileys reads any media url that isn't http(s) straight off the local disk,
+// so without this `imageUrl: "/data/auth/creds.json"` would upload the session
+// credentials. Its check is a case-sensitive startsWith, so hand it the
+// normalized href rather than the raw input
+const parseHttpUrl = (value) => {
+  try {
+    const url = new URL(String(value));
+    return ['http:', 'https:'].includes(url.protocol) ? url : null;
+  } catch {
+    return null;
+  }
+};
+
 let client = null;
 
 createClient({ phoneNumber, pairingCode: process.env.PAIRING_CODE })
@@ -33,13 +46,20 @@ app.use(express.json());
 app.post('/send', apiKeyMiddleware, async (req, res) => {
   const chatId = req.body?.chatId ?? req.query?.chatId;
   const message = req.body?.message ?? req.query?.message;
+  const imageUrl = req.body?.imageUrl ?? req.query?.imageUrl;
 
-  if (!chatId || !message) {
-    return resp(res, 400, 'Missing or empty fields (chatId, message)');
+  if (!chatId || (!message && !imageUrl)) {
+    return resp(res, 400, 'Missing or empty fields (chatId, and one of: message, imageUrl)');
   }
 
   if (!JID_SUFFIXES.some((suffix) => String(chatId).endsWith(suffix))) {
     return resp(res, 400, 'Invalid chatId (expected a WhatsApp JID ending in @s.whatsapp.net for a user or @g.us for a group)');
+  }
+
+  const image = imageUrl ? parseHttpUrl(imageUrl) : null;
+
+  if (imageUrl && !image) {
+    return resp(res, 400, 'Invalid imageUrl (expected an http:// or https:// URL)');
   }
 
   if (!client?.isReady()) {
@@ -47,6 +67,11 @@ app.post('/send', apiKeyMiddleware, async (req, res) => {
   }
 
   try {
+    if (image) {
+      await client.sendImage(String(chatId), image.href, message);
+      return resp(res, 200, 'Sent image successfully');
+    }
+
     await client.sendText(String(chatId), message);
     return resp(res, 200, 'Sent message successfully');
   }

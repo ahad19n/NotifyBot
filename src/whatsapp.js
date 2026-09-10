@@ -168,6 +168,9 @@ exports.createClient = async ({ phoneNumber, pairingCode }) => {
 
     sendText: (chatId, message) => sock.sendMessage(chatId, { text: message }),
 
+    // Baileys downloads the url itself; an undefined caption is simply omitted
+    sendImage: (chatId, imageUrl, caption) => sock.sendMessage(chatId, { image: { url: imageUrl }, caption }),
+
     close: async () => {
       stopped = true;
       ready = false;

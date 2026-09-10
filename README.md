@@ -3,7 +3,8 @@
 WhatsApp notification gateway built on [Baileys](https://github.com/WhiskeySockets/Baileys).
 
 Links a personal WhatsApp account over the multi-device protocol and exposes a
-single HTTP endpoint so other services can push text notifications into a chat.
+single HTTP endpoint so other services can push text and image notifications
+into a chat.
 No browser, no Puppeteer.
 
 ## Configuration
@@ -47,13 +48,26 @@ Parameters are read from the JSON body or the query string.
 | --- | --- | --- |
 | `apiKey` | yes | Must match `API_KEY` |
 | `chatId` | yes | WhatsApp JID — `<number>@s.whatsapp.net` for a user, `<id>@g.us` for a group |
-| `message` | yes | Text to send |
+| `message` | one of | Text to send, or the image caption when `imageUrl` is set |
+| `imageUrl` | one of | `http://` or `https://` URL of an image to send; the server downloads it |
 
 ```bash
 curl -X POST http://localhost:3000/send \
   -H 'Content-Type: application/json' \
   -d '{"apiKey":"secret","chatId":"923001234567@s.whatsapp.net","message":"hello"}'
 ```
+
+Send an image, using `message` as its caption (optional):
+
+```bash
+curl -X POST http://localhost:3000/send \
+  -H 'Content-Type: application/json' \
+  -d '{"apiKey":"secret","chatId":"923001234567@s.whatsapp.net","imageUrl":"https://example.com/chart.png","message":"Daily report"}'
+```
+
+Only `http(s)` URLs are accepted. Local paths, `file://` and `data:` URLs are
+rejected, since Baileys would otherwise read a plain path straight off the
+server's disk.
 
 Responses use a fixed envelope:
 
@@ -64,14 +78,15 @@ Responses use a fixed envelope:
 | Status | Meaning |
 | --- | --- |
 | `200` | Sent |
-| `400` | Missing `apiKey`, missing `chatId`/`message`, or a malformed `chatId` |
+| `400` | Missing `apiKey`, missing `chatId`, neither `message` nor `imageUrl`, a malformed `chatId`, or a non-http(s) `imageUrl` |
 | `401` | Invalid `apiKey` |
 | `503` | WhatsApp not connected yet — retry shortly |
-| `500` | Send failed |
+| `500` | Send failed, including an `imageUrl` that could not be downloaded |
 
 ## Migrating from the whatsapp-web.js version
 
-- **Text only.** `imageUrl`, `imageBase64`, `mimeType` and `filename` are gone.
+- **Images by URL only.** `imageUrl` still works, with `message` as the caption.
+  `imageBase64`, `mimeType` and `filename` are gone.
 - **`chatId` must be a Baileys JID.** The old `@c.us` suffix is rejected; users
   are `@s.whatsapp.net`.
 - **The group chat-ID responder is gone.** Mentioning the bot in a group no
